@@ -95,18 +95,21 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                 logPanel.setBaselineResponse(baselineResponse);
                 comparator = new ResponseComparator(baselineResponse, 50.0);
 
+                // 记录原始host，用于过滤
+                String originalHost = requestResponse.request().httpService().host();
+
                 List<CompletableFuture<Void>> futures = new ArrayList<>();
 
                 // 并发执行所有测试
-                futures.add(CompletableFuture.runAsync(() -> testUrlPathVariations(allurlpaths, requestResponse), executorService));
-                futures.add(CompletableFuture.runAsync(() -> testIpSpoofing(requestResponse), executorService));
-                futures.add(CompletableFuture.runAsync(() -> testMethodSwitch(requestResponse), executorService));
-                futures.add(CompletableFuture.runAsync(() -> testHttpProtocolBypass(requestResponse), executorService));
-                futures.add(CompletableFuture.runAsync(() -> testPathNormalization(requestResponse), executorService));
-                futures.add(CompletableFuture.runAsync(() -> testAuthBypass(requestResponse), executorService));
-                futures.add(CompletableFuture.runAsync(() -> testParameterInjection(requestResponse), executorService));
-                futures.add(CompletableFuture.runAsync(() -> testParameterNamingFuzz(requestResponse), executorService));
-                futures.add(CompletableFuture.runAsync(() -> testContentTypeConfusion(requestResponse), executorService));
+                futures.add(CompletableFuture.runAsync(() -> testUrlPathVariations(allurlpaths, requestResponse, originalHost), executorService));
+                futures.add(CompletableFuture.runAsync(() -> testIpSpoofing(requestResponse, originalHost), executorService));
+                futures.add(CompletableFuture.runAsync(() -> testMethodSwitch(requestResponse, originalHost), executorService));
+                futures.add(CompletableFuture.runAsync(() -> testHttpProtocolBypass(requestResponse, originalHost), executorService));
+                futures.add(CompletableFuture.runAsync(() -> testPathNormalization(requestResponse, originalHost), executorService));
+                futures.add(CompletableFuture.runAsync(() -> testAuthBypass(requestResponse, originalHost), executorService));
+                futures.add(CompletableFuture.runAsync(() -> testParameterInjection(requestResponse, originalHost), executorService));
+                futures.add(CompletableFuture.runAsync(() -> testParameterNamingFuzz(requestResponse, originalHost), executorService));
+                futures.add(CompletableFuture.runAsync(() -> testContentTypeConfusion(requestResponse, originalHost), executorService));
 
                 // 等待所有任务完成
                 CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
@@ -115,18 +118,18 @@ public class MyContextMenus implements ContextMenuItemsProvider {
         }
 
             // 原始URL路径变形测试
-            private void testUrlPathVariations(List<PathWithType> allurlpaths, HttpRequestResponse requestResponse) {
+            private void testUrlPathVariations(List<PathWithType> allurlpaths, HttpRequestResponse requestResponse, String originalHost) {
                 for (PathWithType pathWithType : allurlpaths) {
                     HttpRequest request = requestResponse.request().withPath(pathWithType.path);
                     HttpResponse response = api.http().sendRequest(request).response();
                     ComparisonResult result = comparator != null ? comparator.compare(response) : null;
                     logPanel.addLog(request, response, pathWithType.type);
-                    publish(new Object[]{response, request, requestResponse, result});
+                    publish(new Object[]{response, request, requestResponse, result, originalHost});
                 }
             }
 
             // IP伪造头绕过
-            private void testIpSpoofing(HttpRequestResponse requestResponse) {
+            private void testIpSpoofing(HttpRequestResponse requestResponse, String originalHost) {
                 HttpRequest ipSpoofRequest = requestResponse.request()
                     .withHeader(HttpHeader.httpHeader("Base-Url","127.0.0.1"))
                     .withHeader(HttpHeader.httpHeader("Client-IP","127.0.0.1"))
@@ -144,37 +147,37 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                 HttpResponse ipSpoofResponse = api.http().sendRequest(ipSpoofRequest).response();
                 ComparisonResult result = comparator != null ? comparator.compare(ipSpoofResponse) : null;
                 logPanel.addLog(ipSpoofRequest, ipSpoofResponse, "IP Spoofing");
-                publish(new Object[]{ipSpoofResponse, ipSpoofRequest, requestResponse, result});
+                publish(new Object[]{ipSpoofResponse, ipSpoofRequest, requestResponse, result, originalHost});
             }
 
             // HTTP方法切换
-            private void testMethodSwitch(HttpRequestResponse requestResponse) {
+            private void testMethodSwitch(HttpRequestResponse requestResponse, String originalHost) {
                 String currentMethod = requestResponse.request().method().toString();
                 if (currentMethod.equals("GET")) {
                     HttpRequest request = requestResponse.request().withMethod("POST");
                     HttpResponse response = api.http().sendRequest(request).response();
                     ComparisonResult result = comparator != null ? comparator.compare(response) : null;
                     logPanel.addLog(request, response, "Method GET→POST");
-                    publish(new Object[]{response, request, requestResponse, result});
+                    publish(new Object[]{response, request, requestResponse, result, originalHost});
                 }
                 if (currentMethod.equals("POST")) {
                     HttpRequest request = requestResponse.request().withMethod("GET");
                     HttpResponse response = api.http().sendRequest(request).response();
                     ComparisonResult result = comparator != null ? comparator.compare(response) : null;
                     logPanel.addLog(request, response, "Method POST→GET");
-                    publish(new Object[]{response, request, requestResponse, result});
+                    publish(new Object[]{response, request, requestResponse, result, originalHost});
                 }
             }
 
             // HTTP协议层绕过
-            private void testHttpProtocolBypass(HttpRequestResponse requestResponse) {
+            private void testHttpProtocolBypass(HttpRequestResponse requestResponse, String originalHost) {
                 String[] hosts = {"localhost", "127.0.0.1", "0.0.0.0", "::1"};
                 for (String host : hosts) {
                     HttpRequest req = requestResponse.request().withHeader(HttpHeader.httpHeader("Host", host));
                     HttpResponse resp = api.http().sendRequest(req).response();
                     ComparisonResult result = comparator != null ? comparator.compare(resp) : null;
                     logPanel.addLog(req, resp, "Host Header");
-                    publish(new Object[]{resp, req, requestResponse, result});
+                    publish(new Object[]{resp, req, requestResponse, result, originalHost});
                 }
 
                 String originalPath = requestResponse.request().path();
@@ -182,17 +185,17 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                 HttpResponse resp1 = api.http().sendRequest(req1).response();
                 ComparisonResult result1 = comparator != null ? comparator.compare(resp1) : null;
                 logPanel.addLog(req1, resp1, "X-Original-URL");
-                publish(new Object[]{resp1, req1, requestResponse, result1});
+                publish(new Object[]{resp1, req1, requestResponse, result1, originalHost});
 
                 HttpRequest req2 = requestResponse.request().withPath("/").withHeader(HttpHeader.httpHeader("X-Rewrite-URL", originalPath));
                 HttpResponse resp2 = api.http().sendRequest(req2).response();
                 ComparisonResult result2 = comparator != null ? comparator.compare(resp2) : null;
                 logPanel.addLog(req2, resp2, "X-Rewrite-URL");
-                publish(new Object[]{resp2, req2, requestResponse, result2});
+                publish(new Object[]{resp2, req2, requestResponse, result2, originalHost});
             }
 
             // 路径规范化绕过
-            private void testPathNormalization(HttpRequestResponse requestResponse) {
+            private void testPathNormalization(HttpRequestResponse requestResponse, String originalHost) {
                 String fullPath = requestResponse.request().path();
 
                 // 分离路径和参数
@@ -256,12 +259,12 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                     HttpResponse resp = api.http().sendRequest(req).response();
                     ComparisonResult result = comparator != null ? comparator.compare(resp) : null;
                     logPanel.addLog(req, resp, pathWithType.type);
-                    publish(new Object[]{resp, req, requestResponse, result});
+                    publish(new Object[]{resp, req, requestResponse, result, originalHost});
                 }
             }
 
             // 认证令牌/会话绕过
-            private void testAuthBypass(HttpRequestResponse requestResponse) {
+            private void testAuthBypass(HttpRequestResponse requestResponse, String originalHost) {
                 HttpRequest baseRequest = requestResponse.request();
 
                 // 删除Authorization头
@@ -274,20 +277,20 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                 HttpResponse resp1 = api.http().sendRequest(noAuthRequest).response();
                 ComparisonResult result1 = comparator != null ? comparator.compare(resp1) : null;
                 logPanel.addLog(noAuthRequest, resp1, "Remove Auth");
-                publish(new Object[]{resp1, noAuthRequest, requestResponse, result1});
+                publish(new Object[]{resp1, noAuthRequest, requestResponse, result1, originalHost});
 
                 // 空/无效Token
                 HttpRequest nullTokenReq = baseRequest.withHeader(HttpHeader.httpHeader("Authorization", "Bearer null"));
                 HttpResponse resp2 = api.http().sendRequest(nullTokenReq).response();
                 ComparisonResult result2 = comparator != null ? comparator.compare(resp2) : null;
                 logPanel.addLog(nullTokenReq, resp2, "Null Token");
-                publish(new Object[]{resp2, nullTokenReq, requestResponse, result2});
+                publish(new Object[]{resp2, nullTokenReq, requestResponse, result2, originalHost});
 
                 HttpRequest emptyTokenReq = baseRequest.withHeader(HttpHeader.httpHeader("Authorization", "Bearer "));
                 HttpResponse resp3 = api.http().sendRequest(emptyTokenReq).response();
                 ComparisonResult result3 = comparator != null ? comparator.compare(resp3) : null;
                 logPanel.addLog(emptyTokenReq, resp3, "Empty Token");
-                publish(new Object[]{resp3, emptyTokenReq, requestResponse, result3});
+                publish(new Object[]{resp3, emptyTokenReq, requestResponse, result3, originalHost});
 
                 // Cookie污染
                 String existingCookie = "";
@@ -304,12 +307,12 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                     HttpResponse resp = api.http().sendRequest(cookieRequest).response();
                     ComparisonResult result = comparator != null ? comparator.compare(resp) : null;
                     logPanel.addLog(cookieRequest, resp, "Cookie Injection");
-                    publish(new Object[]{resp, cookieRequest, requestResponse, result});
+                    publish(new Object[]{resp, cookieRequest, requestResponse, result, originalHost});
                 }
             }
 
             // 参数污染和注入
-            private void testParameterInjection(HttpRequestResponse requestResponse) {
+            private void testParameterInjection(HttpRequestResponse requestResponse, String originalHost) {
                 String path = requestResponse.request().path();
                 String body = requestResponse.request().bodyToString();
                 String method = requestResponse.request().method().toString();
@@ -333,7 +336,7 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                         HttpResponse resp = api.http().sendRequest(req).response();
                         ComparisonResult result = comparator != null ? comparator.compare(resp) : null;
                         logPanel.addLog(req, resp, mutation.description);
-                        publish(new Object[]{resp, req, requestResponse, result});
+                        publish(new Object[]{resp, req, requestResponse, result, originalHost});
                     }
                 }
 
@@ -345,13 +348,13 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                         HttpResponse resp = api.http().sendRequest(req).response();
                         ComparisonResult result = comparator != null ? comparator.compare(resp) : null;
                         logPanel.addLog(req, resp, mutation.description);
-                        publish(new Object[]{resp, req, requestResponse, result});
+                        publish(new Object[]{resp, req, requestResponse, result, originalHost});
                     }
                 }
             }
 
             // 参数命名Fuzz
-            private void testParameterNamingFuzz(HttpRequestResponse requestResponse) {
+            private void testParameterNamingFuzz(HttpRequestResponse requestResponse, String originalHost) {
                 String path = requestResponse.request().path();
                 String body = requestResponse.request().bodyToString();
 
@@ -384,7 +387,7 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                     HttpResponse resp = api.http().sendRequest(req).response();
                     ComparisonResult result = comparator != null ? comparator.compare(resp) : null;
                     logPanel.addLog(req, resp, "Param Naming: " + style);
-                    publish(new Object[]{resp, req, requestResponse, result});
+                    publish(new Object[]{resp, req, requestResponse, result, originalHost});
                 }
             }
 
@@ -460,7 +463,7 @@ public class MyContextMenus implements ContextMenuItemsProvider {
             }
 
             // Content-Type混淆
-            private void testContentTypeConfusion(HttpRequestResponse requestResponse) {
+            private void testContentTypeConfusion(HttpRequestResponse requestResponse, String originalHost) {
                 String method = requestResponse.request().method().toString();
                 if (!method.equals("POST") && !method.equals("PUT") && !method.equals("PATCH")) {
                     return;
@@ -479,7 +482,7 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                     HttpResponse resp = api.http().sendRequest(req).response();
                     ComparisonResult result = comparator != null ? comparator.compare(resp) : null;
                     logPanel.addLog(req, resp, "Content-Type: " + contentType);
-                    publish(new Object[]{resp, req, requestResponse, result});
+                    publish(new Object[]{resp, req, requestResponse, result, originalHost});
                 }
             }
 
@@ -490,6 +493,12 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                     HttpRequest request = (HttpRequest) chunk[1];
                     HttpRequestResponse RequestResponse = (HttpRequestResponse) chunk[2];
                     ComparisonResult result = chunk.length > 3 ? (ComparisonResult) chunk[3] : null;
+                    String originalHost = chunk.length > 4 ? (String) chunk[4] : null;
+
+                    // 验证host是否匹配原始目标
+                    if (originalHost != null && !request.httpService().host().equals(originalHost)) {
+                        continue; // 跳过不同host的请求
+                    }
 
                     // 简化判断：新响应为2xx且有显著差异即报告
                     boolean shouldAddIssue = false;
@@ -504,8 +513,6 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                     }
 
                     if (shouldAddIssue) {
-                        // TODO: 修复host混乱问题后再启用
-                        /*
                         HttpRequestResponse testRequestResponse = HttpRequestResponse.httpRequestResponse(request, response);
                         AuditIssue auditIssue = AuditIssue.auditIssue(
                                 springbypass.springauthbypassIssueName,
@@ -520,7 +527,6 @@ public class MyContextMenus implements ContextMenuItemsProvider {
                                 testRequestResponse);
                         activeAuditIssues.add(auditIssue);
                         api.siteMap().add(testRequestResponse);
-                        */
                     }
                 }
             }

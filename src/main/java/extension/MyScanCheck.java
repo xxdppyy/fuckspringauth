@@ -10,12 +10,12 @@ import burp.api.montoya.scanner.audit.issues.AuditIssue;
 
 public class MyScanCheck implements ScanCheck {
     MontoyaApi api;
-    MyContextMenus myContextMenus = new MyContextMenus(api);
-    public MyScanCheck(MontoyaApi api) {
-        api.logging().logToOutput("bypass success");
-        api.logging().logToOutput("myscancheck is"+myContextMenus.getActiveAuditIssues().toString());
-        // Save references to usefull objects
+    MyContextMenus myContextMenus;
+
+    public MyScanCheck(MontoyaApi api, MyContextMenus myContextMenus) {
         this.api = api;
+        this.myContextMenus = myContextMenus;
+        api.logging().logToOutput("MyScanCheck initialized");
     }
     public AuditResult activeAudit(HttpRequestResponse baseRequestResponse, AuditInsertionPoint auditInsertionPoint) {
         api.logging().logToOutput("bypass success");
